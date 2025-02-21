@@ -1,14 +1,16 @@
 #include "engine.h"
-#include <iostream>
+#include "instance.h"
+
 
 namespace VLKRenderer {
 	Engine::Engine() {
 
 		if (debugMode) {
-			std::cout << "Making a graphics engine\n";
+			std::cout << "VLKRenderer constructor called\n";
 		}
 		
 		build_glfw_window();
+    instance_setup();
 	}
 
 	void Engine::build_glfw_window() {
@@ -23,9 +25,9 @@ namespace VLKRenderer {
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 		//GLFWwindow* glfwCreateWindow (int width, int height, const char *title, GLFWmonitor *monitor, GLFWwindow *share)
-		if (window = glfwCreateWindow(width, height, "ID Tech 12", nullptr, nullptr)) {
+		if ((window = glfwCreateWindow(width, height, window_title, nullptr, nullptr))) {
 			if (debugMode) {
-				std::cout << "Successfully made a glfw window called \"ID Tech 12\", width: " << width << ", height: " << height << '\n';
+				std::cout << "Successfully made a glfw window called "<< window_title <<", width: " << width << ", height: " << height << '\n';
 			}
 		}
 		else {
@@ -35,12 +37,19 @@ namespace VLKRenderer {
 		}
 	}
 
+  void Engine::instance_setup() {
+    instance = vkInit::make_vk_Instance(debugMode, window_title);
+  }
+
+
 	Engine::~Engine() {
 
 		if (debugMode) {
-			std::cout << "Goodbye see you!\n";
+			std::cout << "VLKRenderer destructor called\n";
 		}
-
+      
+    //destroy allocated vulkan instance
+    instance.destroy();
 		//terminate glfw
 		glfwTerminate();
 	}
