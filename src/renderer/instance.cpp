@@ -1,8 +1,11 @@
-#include "instance.hpp"
-#include "../logging/logger.hpp"
+#include "instance.h"
+#include "../logging/logger.h"
 #include <GLFW/glfw3.h>
+#include <sstream>
+#include <cstdlib>
 
 bool supported_by_instance(const char** extensionNames, int extensionCount, const char** layerNames, int layerCount) {
+
 	Logger* logger = Logger::get_logger();
 	std::stringstream lineBuilder;
 
@@ -61,22 +64,18 @@ bool supported_by_instance(const char** extensionNames, int extensionCount, cons
 }
 
 vk::Instance make_instance(const char* applicationName, std::deque<std::function<void(vk::Instance)>>& deletionQueue) {
+
 	Logger* logger = Logger::get_logger();
+
 	logger->print("Making an instance...");
 
 	uint32_t version = vk::enumerateInstanceVersion().value;
 
 	logger->report_version_number(version);
 
-	/*
-	* from vulkan_structs.hpp:
-	*
-	* VULKAN_HPP_CONSTEXPR ApplicationInfo( const char * pApplicationName_   = {},
-									  uint32_t     applicationVersion_ = {},
-									  const char * pEngineName_        = {},
-									  uint32_t     engineVersion_      = {},
-									  uint32_t     apiVersion_         = {} )
-	*/
+	// set the patch to 0 for best compatibility/stability)
+	version &= ~(0xFFFU);
+
 	vk::ApplicationInfo appInfo = vk::ApplicationInfo(
 		applicationName,
 		version,
@@ -86,35 +85,52 @@ vk::Instance make_instance(const char* applicationName, std::deque<std::function
 	);
 
 	/*
-	* Everything with Vulkan is "opt-in", so we need to query which extensions glfw needs
-	* in order to interface with vulkan.
+	* Extensions
 	*/
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions;
 	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-  uint32_t enabledExtensionCount = glfwExtensionCount;
-  if (logger->is_enabled()) enabledExtensionCount++;
-  const char** ppEnabledExtensionNames = (const char**)malloc(enabledExtensionCount * sizeof(char*));
+	uint32_t enabledExtensionCount = glfwExtensionCount;
+	if (logger->is_enabled()) {
+		enabledExtensionCount++;
+	}
+	const char** ppEnabledExtensionNames = (const char**)malloc(enabledExtensionCount * sizeof(char*));
 
-  // request Extensions and also add debug utils
-  for (int i = 0; i < glfwExtensionCount; ++i) ppEnabledExtensionNames[i] = glfwExtensions[i];
-  if (logger->is_enabled()) ppEnabledExtensionNames[glfwExtensionCount] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+	uint32_t offset = 0;
+	for (;offset < glfwExtensionCount; ++offset) {
+		ppEnabledExtensionNames[offset] = glfwExtensions[offset];
+	}
+	if (logger->is_enabled()) {
+		ppEnabledExtensionNames[offset++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+	}
+
 	logger->print("extensions to be requested:");
 	logger->print_list(ppEnabledExtensionNames, enabledExtensionCount);
 
-  //
-  // Layers
-  // Will be enabled only if logger->is_enabled() == true
-  // so only if we actually want debug information
-  //
-  uint32_t enabledLayerCount = 0;
-  if (logger->is_enabled()) enabledLayerCount++;
-  const char** ppEnabledLayerNames = nullptr;
-  if (enabledLayerCount > 0) ppEnabledLayerNames = (const char**)malloc(enabledLayerCount * sizeof(char*));
-  if (logger->is_enabled()) ppEnabledLayerNames[0] = "VK_LAYER_KHRONOS_validation";
-  logger->print("Layers to be requested: ");
-  logger->print_list(ppEnabledLayerNames, enabledLayerCount);
-  if (!supported_by_instance(ppEnabledExtensionNames, enabledExtensionCount, ppEnabledLayerNames, enabledLayerCount)) return nullptr;
+	/*
+	* Layers
+	*/
+	uint32_t enabledLayerCount = 0;
+	if (logger->is_enabled()) {
+		enabledLayerCount++;
+	}
+	const char** ppEnabledLayerNames = nullptr;
+	if (enabledLayerCount > 0) {
+		ppEnabledLayerNames = (const char**)malloc(enabledLayerCount * sizeof(char*));
+	}
+
+	if (logger->is_enabled()) {
+		ppEnabledLayerNames[0] = "VK_LAYER_KHRONOS_validation";
+	}
+  enabledLayerCount++;
+  ppEnabledLayerNames[1] = "VK_LAYER_KHRONOS_shader_object";
+
+	logger->print("layers to be requested:");
+	logger->print_list(ppEnabledLayerNames, enabledLayerCount);
+
+	if (!supported_by_instance(ppEnabledExtensionNames, enabledExtensionCount, ppEnabledLayerNames, enabledLayerCount)) {
+		return nullptr;
+	}
 
 	/*
 	*
@@ -130,8 +146,8 @@ vk::Instance make_instance(const char* applicationName, std::deque<std::function
 	vk::InstanceCreateInfo createInfo = vk::InstanceCreateInfo(
 		vk::InstanceCreateFlags(),
 		&appInfo,
-		enabledLayerCount, ppEnabledLayerNames, // enabled layers
-		enabledExtensionCount, ppEnabledExtensionNames // enabled extensions
+		enabledLayerCount, ppEnabledLayerNames,
+		enabledExtensionCount, ppEnabledExtensionNames
 	);
 
 	vk::ResultValue<vk::Instance> instanceAttempt= vk::createInstance(createInfo);
@@ -147,8 +163,9 @@ vk::Instance make_instance(const char* applicationName, std::deque<std::function
 		logger->print("Deleted Instance!");
 		});
 	
-  free(ppEnabledExtensionNames);
-  if (ppEnabledLayerNames) free (ppEnabledLayerNames);
-
+	free(ppEnabledExtensionNames);
+	if (ppEnabledLayerNames) {
+		free(ppEnabledLayerNames);
+	}
 	return instance;
 }

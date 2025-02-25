@@ -1,7 +1,7 @@
-#include "file.hpp"
+#include "file.h"
 #include <fstream>
 #include <sstream>
-#include "../logging/logger.hpp"
+#include "../logging/logger.h"
 
 std::vector<char> read_file(const char* filename) {
   Logger* logger = Logger::get_logger();
@@ -21,9 +21,7 @@ std::vector<char> read_file(const char* filename) {
   std::vector<char> buffer(filesize);
   file.seekg(0);
   file.read(buffer.data(), filesize);
-  logger->print(buffer.data());
-  logger->print(std::to_string(buffer.size()));
-  
+
   file.close();
   return buffer;
 }

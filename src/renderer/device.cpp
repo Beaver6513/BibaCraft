@@ -1,60 +1,87 @@
-#include "device.hpp"
-#include "../logging/logger.hpp"
+#include "device.h"
+#include "../logging/logger.h"
 
 bool supports(
     const vk::PhysicalDevice& device,
 	const char** ppRequestedExtensions,
 	const uint32_t requestedExtensionCount) {
+    
+    Logger* logger = Logger::get_logger();
+    logger->print("Requested Physical Device Extensions:");
+    logger->print_list(ppRequestedExtensions, requestedExtensionCount);
 
-  Logger* logger = Logger::get_logger();
-  logger->print("Requested physical device with following extensions: ");
-  logger->print_list(ppRequestedExtensions, requestedExtensionCount);
+    std::vector<vk::ExtensionProperties> extensions = device.enumerateDeviceExtensionProperties().value;
+    logger->print("Physical Device Supported Extensions:");
+    logger->print_extensions(extensions);
 
-  std::vector<vk::ExtensionProperties> extensions = device.enumerateDeviceExtensionProperties().value;
-  logger->print("Physical device can support: ");
-  logger->print_extensions(extensions);
+    for (uint32_t i = 0; i < requestedExtensionCount; ++i) {
+        bool supported = false;
 
-  for (uint32_t i = 0; i < requestedExtensionCount; ++i) {
-    bool supported = false;
-    for(vk::ExtensionProperties& extension : extensions) {
-      std::string name = extension.extensionName;
-      if(!name.compare(ppRequestedExtensions[i])) {
-        supported = true;
-        break;
-      }
+	for (vk::ExtensionProperties& extension : extensions) {
+        std::string name = extension.extensionName;
+		if (!name.compare(ppRequestedExtensions[i])) {
+            supported = true;
+            break;
+        }
     }
-    if (!supported) return true;
-  }
-  return true;
+        if (!supported) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool is_suitable(const vk::PhysicalDevice& device) {
-  Logger* logger = Logger::get_logger();
-  logger->print("Checking if device can support the requested extension");
-  const char* ppRequestedExtensions = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-  bool isSupported = supports(device, &ppRequestedExtensions, 1);
-  std::stringstream message;
-  message << "Device " << (isSupported ? "can" : "can't") << " support the requested extension";
-  logger->print(message.str());
-  return isSupported;
+
+	Logger* logger = Logger::get_logger();
+	logger->print("Checking if device is suitable");
+
+	/*
+	* A device is suitable if it can present to the screen, ie support
+	* the swapchain extension
+	*/
+	const char* ppRequestedExtension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+
+	if (supports(device, &ppRequestedExtension, 1)) {
+		logger->print("Device can support the requested extensions!");
+	}
+	else {
+		logger->print("Device can't support the requested extensions!");
+		return false;
+	}
+	return true;
 }
 
 vk::PhysicalDevice choose_physical_device(const vk::Instance& instance) {
-  Logger* logger = Logger::get_logger();
-  logger->print("Choosing physical device...");
-  std::vector<vk::PhysicalDevice> aviableDevices = instance.enumeratePhysicalDevices().value;
-  for (vk::PhysicalDevice device : aviableDevices) {
-    logger->log(device);
-    if (is_suitable(device)) {
-      logger->print("This device has been choosen!");
-      return device;
-    }
-  }
-  return nullptr;
+
+	Logger* logger = Logger::get_logger();
+	logger->print("Choosing physical device...");
+
+	/*
+	* ResultValueType<std::vector<PhysicalDevice, PhysicalDeviceAllocator>>::type
+		Instance::enumeratePhysicalDevices( Dispatch const & d )
+
+		std::vector<vk::PhysicalDevice> instance.enumeratePhysicalDevices( Dispatch const & d = static/default )
+	*/
+	std::vector<vk::PhysicalDevice> availableDevices = instance.enumeratePhysicalDevices().value;
+
+	for (vk::PhysicalDevice device : availableDevices) {
+
+		logger->log(device);
+		if (is_suitable(device)) {
+			return device;
+		}
+	}
+
+	return nullptr;
 }
 
-uint32_t findQueueFamilyIndex(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, vk::QueueFlags queueType) {
-Logger* logger = Logger::get_logger();
+uint32_t find_queue_family_index(vk::PhysicalDevice physicalDevice,
+	vk::SurfaceKHR surface,
+    vk::QueueFlags queueType) {
+	
+	Logger* logger = Logger::get_logger();
 
 	std::vector<vk::QueueFamilyProperties> queueFamilies = physicalDevice.getQueueFamilyProperties();
 	logger->log(queueFamilies);
@@ -64,72 +91,92 @@ Logger* logger = Logger::get_logger();
 
 		bool canPresent = false;
 		if (surface) {
-			if (physicalDevice.getSurfaceSupportKHR(i, surface).result == vk::Result::eSuccess) {
+			if (physicalDevice.getSurfaceSupportKHR(i, surface)
+					.result == vk::Result::eSuccess) {
 				canPresent = true;
 			}
-		} else canPresent = true;
+		}
+		else {
+			canPresent = true;
+		}
 
 		bool supported = false;
-		if (queueFamily.queueFlags & queueType) supported = true;
-		if (supported && canPresent) return i;
+		if (queueFamily.queueFlags & queueType) {
+			supported = true;
+		}
+
+		if (supported && canPresent) {
+			return i;
+		}
 	}
-	return UINT32_MAX;}
+	return UINT32_MAX;
+}
 
-	Logger* logger = Logger::get_logger();
-  vk::Device create_logical_device(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface,
+vk::Device create_logical_device(
+    vk::PhysicalDevice physicalDevice,
+	vk::SurfaceKHR surface,
     std::deque<std::function<void(vk::Device)>>& deletionQueue) {
+	
+	Logger* logger = Logger::get_logger();
 
-	/*
-	* At time of creation, any required queues will also be created,
-	* so queue create info must be passed in.
-	*/
-	uint32_t graphicsIndex = findQueueFamilyIndex(physicalDevice, surface, vk::QueueFlagBits::eGraphics);
+	uint32_t graphicsIndex = find_queue_family_index(physicalDevice, surface, vk::QueueFlagBits::eGraphics);
 	float queuePriority = 1.0f;
+	vk::DeviceQueueCreateInfo queueInfo = vk::DeviceQueueCreateInfo(
+		vk::DeviceQueueCreateFlags(), graphicsIndex, 1, &queuePriority
+	);
 
-	vk::DeviceQueueCreateInfo queueCreateInfo = vk::DeviceQueueCreateInfo(
-		vk::DeviceQueueCreateFlags(), graphicsIndex, 
-		1, &queuePriority);
-
-	/*
-	* Device features must be requested before the device is abstracted,
-	* so that we only pay for what we need.
-	*/
+	//Request features
 	vk::PhysicalDeviceFeatures deviceFeatures = vk::PhysicalDeviceFeatures();
-	uint32_t enabledLayerCount = 0;
+	vk::PhysicalDeviceShaderObjectFeaturesEXT shaderFeatures = vk::PhysicalDeviceShaderObjectFeaturesEXT(1);
+	vk::PhysicalDeviceDynamicRenderingFeaturesKHR dynamicFeatures = vk::PhysicalDeviceDynamicRenderingFeaturesKHR(1);
+  vk::PhysicalDeviceSynchronization2FeaturesKHR syncFeature = vk::PhysicalDeviceSynchronization2FeaturesKHR(1);
+
+	//Chain them together
+	shaderFeatures.pNext = &dynamicFeatures;
+	dynamicFeatures.pNext = &syncFeature;
+
+	uint32_t enabled_layer_count = 0;
 	const char** ppEnabledLayers = nullptr;
 	if (logger->is_enabled()) {
-		enabledLayerCount = 1;
-		ppEnabledLayers = (const char**)malloc(sizeof(const char*));
+		enabled_layer_count = 1;
+		ppEnabledLayers = (const char**) malloc(sizeof(const char*));
 		ppEnabledLayers[0] = "VK_LAYER_KHRONOS_validation";
 	}
 
-	/*
-	* Extensions, not used for now
-	*/
-	uint32_t enabledExtensionCount = 1;
-	const char** ppEnabledExtensions = (const char**)malloc(enabledExtensionCount * sizeof(char*));
+	uint32_t enabledExtensionCount = 4;
+	const char** ppEnabledExtensions = (const char**) malloc(enabledExtensionCount * sizeof(char*));
 	ppEnabledExtensions[0] = "VK_KHR_swapchain";
-	//ppEnabledExtensions[1] = "VK_EXT_shader_object";
+	ppEnabledExtensions[1] = "VK_EXT_shader_object";
+	ppEnabledExtensions[2] = "VK_KHR_dynamic_rendering";
+	ppEnabledExtensions[3] = "VK_KHR_synchronization2";
 
 	vk::DeviceCreateInfo deviceInfo = vk::DeviceCreateInfo(
-		vk::DeviceCreateFlags(), 
-		1, &queueCreateInfo,
-		enabledLayerCount, ppEnabledLayers,
-		enabledExtensionCount, ppEnabledExtensions, // for now no extensions
+		vk::DeviceCreateFlags(),
+		1, &queueInfo,
+		enabled_layer_count, ppEnabledLayers,
+		enabledExtensionCount, ppEnabledExtensions,
 		&deviceFeatures);
-
+	deviceInfo.pNext = &shaderFeatures;
+	
 	vk::ResultValueType<vk::Device>::type logicalDevice = physicalDevice.createDevice(deviceInfo);
+	vk::Device device = nullptr;
 	if (logicalDevice.result == vk::Result::eSuccess) {
 		logger->print("GPU has been successfully abstracted!");
 
-		deletionQueue.push_back([](vk::Device device) {
+		deletionQueue.push_back([logger](vk::Device device) {
 			device.destroy();
-			logger->print("Deleted Logical Device!");
+			logger->print("Deleted logical device");
 		});
 
-		return logicalDevice.value;
-	} else {
-		logger->print("Device creation failed!");
-		return nullptr;
+		device = logicalDevice.value;
 	}
+	else {
+		logger->print("Device creation failed!");
+	}
+
+	if (ppEnabledLayers) {
+		free(ppEnabledLayers);
+	}
+	free(ppEnabledExtensions);
+	return device;
 }

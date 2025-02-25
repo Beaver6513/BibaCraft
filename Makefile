@@ -1,12 +1,12 @@
 # Variables
 CXX       = g++
-CXXFLAGS  = -std=c++17 -O2
+CXXFLAGS  = -std=c++17 -Wno-deprecated-declarations -Wno-unused-result
 # Additional include directories (e.g., -I./include)
 INCLUDES  = 
 # Additional library directories (e.g., -L./lib)
 LIBDIRS   = 
 # Libraries to link (e.g., -lmylib)
-LIBS      = -lvulkan -lglfw -lGLU -lGL -lXrandr -lXxf86vm -lXi -lXinerama -lX11 -lrt -ldl -lpthread
+LIBS      = -lvulkan -lglfw -lGLU -lGL -lXrandr -lXxf86vm -lXi -lX11 -lrt -ldl -lpthread -lshaderc_combined
 
 # Directories and file settings
 SRC_DIR   = src

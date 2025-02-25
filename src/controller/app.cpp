@@ -1,4 +1,4 @@
-#include "app.hpp"
+#include "app.h"
 
 App::App(GLFWwindow* window) : window(window) {
 	logger = Logger::get_logger();
